@@ -10,10 +10,9 @@
 </head>
 <body><main class="wrap">
 <header class="brand"><div class="logo">🎉</div><div><h1>桐榮祭2026 打ち上げ管理</h1><p>出欠・買い物・予算・会計をひとつに</p></div></header>
-<section class="card"><h2>ログイン</h2><p class="small">メールアドレスでログインして、出欠登録や打ち上げの管理を行います。</p>
-<label for="email">メールアドレス</label><input id="email" type="email" autocomplete="username" placeholder="メールアドレス">
-<label for="password">パスワード</label><input id="password" type="password" autocomplete="current-password" placeholder="パスワード">
-<div class="row section"><button id="login">ログイン</button><button class="secondary" id="signup">新規登録</button><button class="secondary" id="reset">再設定メール</button></div><p id="authMsg" class="small"></p></section>
+<section class="card"><h2>ログイン</h2><p class="small">メールアドレスに届くログイン用リンクから利用できます。パスワードは不要です。初めての方も同じ手順で登録できます。</p>
+<label for="email">メールアドレス</label><input id="email" type="email" autocomplete="email" placeholder="メールアドレス">
+<div class="section"><button id="login">ログインリンクを送信</button></div><p id="authMsg" class="small"></p></section>
 <section id="userPanel" class="card hidden"><div class="row"><div><h2>出欠登録</h2><p id="who" class="small"></p></div><button class="secondary" id="logout">ログアウト</button></div>
 <div id="unverified" class="notice hidden">メール確認が必要です。確認メールを開いたあと、再ログインしてください。</div>
 <div id="attendanceForm" class="hidden"><p class="small">名簿に事前登録されたアカウントのみ出欠登録できます。氏名は姓と名を分け、間は全角スペース1文字で保存します。</p>
@@ -35,12 +34,13 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const cleanPart=s=>s.trim()&&!/[\s\u3000\u0000-\u001f\u007f]/.test(s.trim());
 const nameOf=(a,b)=>a.trim()+"　"+b.trim();
 const entries=o=>Object.entries(o||{});
-const friendly=e=>({"auth/invalid-credential":"ログイン情報を確認してください。","auth/too-many-requests":"試行回数が多すぎます。時間をおいてください。","auth/email-already-in-use":"このメールアドレスは登録済みです。","auth/weak-password":"パスワードが弱すぎます。","PERMISSION_DENIED":"アクセス権限がありません。Security Rulesを確認してください。"}[e?.code]||"処理に失敗しました。設定・入力・権限を確認してください。");
+const friendly=e=>({"auth/invalid-credential":"メールアドレスを確認して、ログインリンクを再送してください。","auth/invalid-email":"メールアドレスの形式を確認してください。","auth/too-many-requests":"試行回数が多すぎます。時間をおいてください。","auth/expired-action-code":"リンクの有効期限が切れています。もう一度リンクを送信してください。","auth/invalid-action-code":"リンクが無効か、すでに使用されています。もう一度リンクを送信してください。","auth/unauthorized-continue-uri":"Firebase Consoleでこのサイトのドメインを許可してください。","PERMISSION_DENIED":"アクセス権限がありません。Security Rulesを確認してください。"}[e?.code]||"処理に失敗しました。設定・入力・権限を確認してください。");
 if(configured){try{firebase.initializeApp(firebaseConfig);auth=firebase.auth();db=firebase.database()}catch(e){console.error(e)}}
 function needFirebase(){if(!auth||!db){say("authMsg","Firebase設定が未完了です。apiKeyとappIdをFirebase Consoleの実値に置き換えてください。","error");return false}return true}
-$("login").onclick=async()=>{if(!needFirebase())return;try{await auth.signInWithEmailAndPassword($("email").value.trim(),$("password").value);say("authMsg","ログインしました。")}catch(e){say("authMsg",friendly(e),"error")}};
-$("signup").onclick=async()=>{if(!needFirebase())return;try{const c=await auth.createUserWithEmailAndPassword($("email").value.trim(),$("password").value);await c.user.sendEmailVerification();await auth.signOut();say("authMsg","登録しました。確認メールを開いてからログインしてください。","success")}catch(e){say("authMsg",friendly(e),"error")}};
-$("reset").onclick=async()=>{if(!needFirebase())return;try{await auth.sendPasswordResetEmail($("email").value.trim());say("authMsg","該当する場合、再設定メールを送信しました。","success")}catch(e){say("authMsg","入力とメール設定を確認してください。","error")}};
+const EMAIL_LINK_KEY="toueusai2026_signin_email";
+const actionCodeSettings={url:location.origin+location.pathname,handleCodeInApp:true};
+$("login").onclick=async()=>{if(!needFirebase())return;const email=$("email").value.trim();if(!email)return say("authMsg","メールアドレスを入力してください。","error");try{await auth.sendSignInLinkToEmail(email,actionCodeSettings);localStorage.setItem(EMAIL_LINK_KEY,email);say("authMsg","ログイン用リンクを送信しました。メールを開き、同じ端末・ブラウザでリンクを押してください。","success")}catch(e){say("authMsg",friendly(e),"error")}};
+if(auth&&auth.isSignInWithEmailLink(window.location.href)){(async()=>{let email=localStorage.getItem(EMAIL_LINK_KEY);if(!email)email=window.prompt("ログインリンクを送信したメールアドレスを入力してください。");if(!email)return say("authMsg","メールアドレスが確認できないため、ログインを中止しました。","error");try{await auth.signInWithEmailLink(email.trim(),window.location.href);localStorage.removeItem(EMAIL_LINK_KEY);history.replaceState({},document.title,location.pathname+location.hash);say("authMsg","ログインしました。","success")}catch(e){say("authMsg",friendly(e),"error")}})()}
 $("logout").onclick=()=>auth?.signOut();
 async function getRole(u){try{const t=await u.getIdTokenResult(true);if(t.claims.admin===true)return t.claims.mainAdmin===true?"mainAdmin":"admin"}catch(e){}return "user"}
 if(auth)auth.onAuthStateChanged(async u=>{user=u;hide("userPanel",!!u);hide("adminPanel",false);hide("authMsg",false);if(!u)return;$("who").textContent="ログイン中："+(u.email||"");hide("userPanel",true);hide("unverified",!u.emailVerified);hide("attendanceForm",u.emailVerified);if(!u.emailVerified)return;role=await getRole(u);if(role==="admin"||role==="mainAdmin"){hide("adminPanel",true);await renderAdmin()}else{try{const s=await db.ref("members/"+u.uid).get();if(s.exists()){$("surname").value=s.val().surname||"";$("given").value=s.val().given||"";const a=await db.ref("attendance/"+u.uid).get();if(a.exists())$("status").value=a.val().status||"考え中";say("userMsg","名簿を確認しました。出欠を登録できます。")}else{say("userMsg","名簿に未登録です。登録申請を送信してください。")}}catch(e){say("userMsg",friendly(e),"error")}}});
