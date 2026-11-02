@@ -36,6 +36,14 @@
 </section>
 <section class="section" id="accounting">
 <div class="panel"><h2>会計サマリー</h2><div class="totals"><div>予算<strong id="budgetLabel">¥40,000</strong></div><div>購入予定額<strong id="plannedTotal">¥0</strong></div><div>実支出合計<strong id="spentTotal">¥0</strong></div><div>予算残額<strong id="remainingTotal">¥40,000</strong></div></div><p class="muted">買い出しリストで購入済みにした品目は自動で会計簿に表示されます。手入力の支出も追加できます。</p></div>
+<div class="panel"><h2>📷 レシートを撮影して会計に登録</h2>
+<p class="muted">スマホならカメラでレシートを撮影できます。画像から文字を読み取り、金額・店名・日付を確認してから会計簿に追加します。読み取り結果は誤認識することがあるため、登録前に必ず確認してください。</p>
+<div class="row"><div class="field"><label>レシート画像（撮影／画像を選択）</label><input id="receiptImage" type="file" accept="image/*" capture="environment"></div><button class="secondary" type="button" id="readReceipt">画像から文字を読み取る</button></div>
+<p class="muted" id="ocrStatus" aria-live="polite">画像を選択して「画像から文字を読み取る」を押してください。初回はOCRエンジンの読み込みに時間がかかる場合があります。</p>
+<div class="row"><div class="field"><label>店名・支出内容</label><input id="receiptName" placeholder="例：スーパー 食材"></div><div class="field"><label>合計金額（円）</label><input id="receiptAmount" type="number" min="0" placeholder="レシートの合計"></div><div class="field"><label>購入日</label><input id="receiptDate" type="date"></div><div class="field"><label>支払った人</label><input id="receiptPayer" placeholder="例：佐藤"></div></div>
+<div class="field" style="margin-top:10px"><label>読み取った文字（必要なら修正できます）</label><textarea id="receiptText" rows="5" placeholder="OCR結果がここに表示されます"></textarea></div>
+<div class="file-actions"><button class="primary" type="button" id="saveReceipt">内容を確認して会計簿に追加</button></div>
+</div>
 <div class="panel"><h2>その他の支出を追加</h2><form id="expenseForm" class="row"><div class="field"><label>内容 *</label><input id="expenseName" required placeholder="例：装飾品送料"></div><div class="field"><label>金額（円）*</label><input id="expenseAmount" type="number" min="0" required></div><div class="field"><label>支払った人</label><input id="expensePayer" placeholder="例：佐藤"></div><div class="field"><label>日付</label><input id="expenseDate" type="date"></div><div class="field"><label>メモ</label><input id="expenseNote"></div><button class="primary">支出を追加</button></form></div>
 <div class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">会計明細</h2><button class="secondary small" id="exportAccounting">会計CSVを書き出す</button></div><div class="table-wrap"><table><thead><tr><th>日付</th><th>内容</th><th>区分</th><th>金額</th><th>支払った人</th><th>メモ</th><th>操作</th></tr></thead><tbody id="expenseRows"></tbody></table></div><div id="expenseEmpty" class="empty">支出はまだありません。</div></div>
 </section>
@@ -45,6 +53,7 @@
 </section>
 <footer>桐榮祭 2026 運営管理｜このブラウザに保存されます</footer>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 const KEY='touei2026-manager-v1';
 let state={members:[],shopping:[],expenses:[],budget:40000};
@@ -95,6 +104,33 @@ $('exportAccounting').onclick=()=>exportCsv('会計簿.csv',[['日付','内容',
 $('exportBackup').onclick=()=>download('桐榮祭2026_運営管理バックアップ.json',JSON.stringify(state,null,2),'application/json;charset=utf-8');
 $('restoreBackup').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const v=JSON.parse(await f.text());if(!v||!Array.isArray(v.members)||!Array.isArray(v.shopping)||!Array.isArray(v.expenses))throw Error();if(!confirm('現在のデータをバックアップ内容で置き換えますか？'))return;state={...state,...v};save();alert('バックアップを復元しました')}catch(err){alert('このバックアップファイルは読み込めませんでした')}e.target.value=''};
 $('clearAll').onclick=()=>{if(confirm('メンバー・買い出し・会計のすべてのデータを削除します。この操作は元に戻せません。')){state={members:[],shopping:[],expenses:[],budget:40000};save()}};
+
+$('readReceipt').onclick=async()=>{
+ const file=$('receiptImage').files[0];if(!file){alert('レシート画像を撮影または選択してください');return}
+ if(!window.Tesseract){alert('文字認識ライブラリを読み込めませんでした。通信環境を確認してページを再読み込みしてください。');return}
+ $('ocrStatus').textContent='画像を解析中です。初回は少し時間がかかります…';$('readReceipt').disabled=true;
+ try{
+  const worker=await Tesseract.createWorker('jpn+eng',1,{logger:m=>{if(m.status)$('ocrStatus').textContent='読み取り中：'+m.status+(m.progress!==undefined?' '+Math.round(m.progress*100)+'%':'')}});
+  const result=await worker.recognize(file);await worker.terminate();
+  const text=result.data.text||'';$('receiptText').value=text;
+  const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),totalCandidates=[];
+  for(const line of lines){if(/合計|総計|お支払|お買上|請求金額|税込合計|total/i.test(line)){const nums=line.match(/[0-9][0-9,]*\s*円?/g);if(nums)for(const n of nums){const v=Number(n.replace(/[^0-9]/g,''));if(v>0)totalCandidates.push(v)}}}
+  if(totalCandidates.length)$('receiptAmount').value=Math.max(...totalCandidates);
+  const dateMatch=text.match(/(20\d{2})[年/.-]\s*(\d{1,2})[月/.-]\s*(\d{1,2})/);
+  if(dateMatch){const d=new Date(Number(dateMatch[1]),Number(dateMatch[2])-1,Number(dateMatch[3]));$('receiptDate').value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  const store=lines.find(x=>x.length>=2&&!/レシート|領収書|電話|TEL|登録番号|合計|小計|税|現金|クレジット|ポイント|日時|\d{2,}/i.test(x));
+  if(store&&!$('receiptName').value)$('receiptName').value=store.slice(0,60);
+  $('ocrStatus').textContent='読み取り完了。店名・合計金額・日付を確認し、必要に応じて修正してください。';
+ }catch(e){console.error(e);$('ocrStatus').textContent='読み取りに失敗しました。明るい場所で撮り直すか、画像を選び直してください。'}finally{$('readReceipt').disabled=false}
+};
+$('saveReceipt').onclick=()=>{
+ const name=$('receiptName').value.trim(),amount=$('receiptAmount').value;
+ if(!name){alert('店名または支出内容を入力してください');return}
+ if(amount===''||!Number.isFinite(Number(amount))||Number(amount)<0){alert('レシートの合計金額を確認して入力してください');return}
+ state.expenses.push({id:uid(),name,amount:Number(amount),payer:$('receiptPayer').value.trim(),date:$('receiptDate').value||new Date().toISOString().slice(0,10),note:'レシート読み取り\n'+$('receiptText').value.trim(),source:'manual'});
+ save();$('receiptImage').value='';$('receiptName').value='';$('receiptAmount').value='';$('receiptDate').value=new Date().toISOString().slice(0,10);$('receiptPayer').value='';$('receiptText').value='';$('ocrStatus').textContent='会計簿に登録しました。次のレシートを撮影できます。';alert('レシートの支出を会計簿に登録しました');
+};
+
 $('expenseDate').value=new Date().toISOString().slice(0,10);load();
 </script>
 </body>
