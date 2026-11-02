@@ -43,7 +43,13 @@
 <body>
 <header><h1>桐榮祭 2026｜運営管理</h1><p>メンバー表・買い出しリスト・会計簿</p></header>
 <main class="wrap">
-<div class="notice"><strong>データ保存について：</strong>このページのデータは、今開いているブラウザ内に保存されます。他の人や別端末とは自動共有されません。メンバー表はGoogleフォームの回答スプレッドシートからCSVをダウンロードして読み込めます。定期的に「バックアップを書き出す」を利用してください。</div>
+<div class="notice"><strong>クラウド同期：</strong><span id="cloudMessage">Firebaseに接続しています。接続完了までこの画面を操作しないでください。</span> メンバー表はGoogleフォームの回答CSVから読み込めます。念のため「バックアップを書き出す」も定期的に利用してください。</div>
+<div id="cloudCover" style="position:fixed;inset:0;z-index:2500;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(245,248,252,.97);text-align:center">
+ <div style="max-width:440px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:0 12px 40px #203b5b12">
+  <div style="font-size:32px">☁️</div><h2 style="margin:8px 0">桐榮祭2026 運営管理</h2>
+  <p id="cloudCoverMessage" class="muted">ログイン操作なしでクラウドに接続しています…</p>
+ </div>
+</div>
 <div class="stats">
 <div class="stat"><span>メンバー</span><strong id="statMembers">0人</strong></div>
 <div class="stat"><span>出席予定</span><strong id="statAttend">0人</strong></div>
@@ -91,6 +97,104 @@
 <button class="tab" data-tab="settings" aria-label="設定・保存"><span class="nav-icon" aria-hidden="true">⚙️</span><span>設定・保存</span></button>
 </nav>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getDatabase, ref, get, set, onValue } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD8-UOMdMEi3INz0voTuvsXXprR8h9rRd0",
+  authDomain: "toueusai-utiage2026.firebaseapp.com",
+  databaseURL: "https://toueusai-utiage2026-default-rtdb.firebaseio.com",
+  projectId: "toueusai-utiage2026",
+  storageBucket: "toueusai-utiage2026.firebasestorage.app",
+  messagingSenderId: "727632939014",
+  appId: "1:727632939014:web:8217c338a2c3dc3ab49b87",
+  measurementId: "G-LFK0SVF3BD"
+};
+const coverMessage = document.getElementById("cloudCoverMessage");
+const cloudMessage = document.getElementById("cloudMessage");
+const cover = document.getElementById("cloudCover");
+const showError = (message) => {
+  coverMessage.textContent = message;
+  cloudMessage.textContent = message;
+  cover.style.display = "flex";
+};
+try {
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const auth = getAuth(app);
+  const dataRef = ref(db, "touei2026/data");
+  let ready = false;
+  let writeTimer = null;
+  let writing = false;
+  let lastWritten = "";
+  window.firebaseSync = {
+    ready: false,
+    save(nextState) {
+      if (!ready) return;
+      clearTimeout(writeTimer);
+      writeTimer = setTimeout(async () => {
+        try {
+          const payload = JSON.stringify(nextState);
+          writing = true;
+          lastWritten = payload;
+          await set(dataRef, nextState);
+          cloudMessage.textContent = "☁️ クラウド同期中";
+          cloudMessage.classList.add("connected");
+        } catch (e) {
+          console.error(e);
+          cloudMessage.textContent = "同期に失敗しました。通信とFirebaseルールを確認してください。";
+          cloudMessage.classList.remove("connected");
+        } finally {
+          writing = false;
+        }
+      }, 350);
+    }
+  };
+  await signInAnonymously(auth);
+  onAuthStateChanged(auth, async (user) => {
+    if (!user || ready) return;
+    try {
+      coverMessage.textContent = "保存済みデータを確認しています…";
+      const snap = await get(dataRef);
+      if (snap.exists()) {
+        window.applyCloudState(snap.val());
+      } else {
+        const local = window.getLocalAppState();
+        await set(dataRef, local);
+        lastWritten = JSON.stringify(local);
+      }
+      ready = true;
+      window.firebaseSync.ready = true;
+      cloudMessage.textContent = "☁️ クラウド同期中";
+      cloudMessage.classList.add("connected");
+      cover.style.display = "none";
+      onValue(dataRef, (remoteSnap) => {
+        if (!remoteSnap.exists() || writing) return;
+        const remoteState = remoteSnap.val();
+        const remoteJson = JSON.stringify(remoteState);
+        if (remoteJson === lastWritten) return;
+        const localJson = JSON.stringify(window.getLocalAppState());
+        if (remoteJson !== localJson) {
+          window.applyCloudState(remoteState);
+          lastWritten = remoteJson;
+        }
+      }, (error) => {
+        console.error(error);
+        cloudMessage.textContent = "同期エラー：Firebaseのルールを確認してください。";
+        cloudMessage.classList.remove("connected");
+      });
+    } catch (e) {
+      console.error(e);
+      showError("クラウド接続に失敗しました。Firebase Authenticationで匿名認証を有効にし、Realtime Databaseのルールを確認してください。");
+    }
+  });
+} catch (e) {
+  console.error(e);
+  showError("Firebaseを初期化できませんでした。ページを再読み込みし、設定と通信を確認してください。");
+}
+</script>
 <script>
 const KEY='touei2026-manager-v1';
 let state={members:[],shopping:[],expenses:[],budget:40000};
@@ -98,8 +202,11 @@ const $=id=>document.getElementById(id);
 const yen=n=>'¥'+(Number(n)||0).toLocaleString('ja-JP');
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function save(){localStorage.setItem(KEY,JSON.stringify(state));render()}
-function load(){try{const v=JSON.parse(localStorage.getItem(KEY));if(v&&typeof v==='object')state={...state,...v};state.members=state.members.map(m=>({...m,id:m.id||uid(),name:m.name||'',email:m.email||'',attendance:m.attendance||'未定',notes:m.notes||''}));state.shopping=state.shopping.map(x=>({...x,id:x.id||uid()}));state.expenses=state.expenses.map(e=>({...e,id:e.id||uid()}))}catch(e){};render()}
+function save(){localStorage.setItem(KEY,JSON.stringify(state));render();if(window.firebaseSync&&window.firebaseSync.ready)window.firebaseSync.save(state)}
+function normalizeState(v){state={members:[],shopping:[],expenses:[],budget:40000,...(v&&typeof v==='object'?v:{})};if(!Array.isArray(state.members))state.members=[];if(!Array.isArray(state.shopping))state.shopping=[];if(!Array.isArray(state.expenses))state.expenses=[];state.members=state.members.map(m=>({...m,id:m.id||uid(),name:m.name||'',email:m.email||'',attendance:m.attendance||'未定',notes:m.notes||''}));state.shopping=state.shopping.map(x=>({...x,id:x.id||uid()}));state.expenses=state.expenses.map(e=>({...e,id:e.id||uid()}))}
+function load(){try{const v=JSON.parse(localStorage.getItem(KEY));if(v&&typeof v==='object')normalizeState(v)}catch(e){};render()}
+window.getLocalAppState=()=>state;
+window.applyCloudState=(v)=>{normalizeState(v);localStorage.setItem(KEY,JSON.stringify(state));render()};
 function csvCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
 function download(name,content,type='text/csv;charset=utf-8'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff',content],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href)}
 function exportCsv(name,rows){download(name,rows.map(r=>r.map(csvCell).join(',')).join('\r\n'))}
