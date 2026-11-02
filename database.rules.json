@@ -3,8 +3,8 @@
     ".read": false,
     ".write": false,
     "members": {
-      ".read": "auth != null && auth.token.admin === true",
-      ".write": "auth != null && auth.token.admin === true",
+      ".read": "auth != null",
+      ".write": "auth != null",
       "$uid": {
         ".read": "auth != null && (auth.token.admin === true || auth.uid === $uid)",
         ".write": "auth != null && auth.token.admin === true",
@@ -30,8 +30,8 @@
       }
     },
     "attendance": {
-      ".read": "auth != null && auth.token.admin === true",
-      ".write": "auth != null && auth.token.admin === true",
+      ".read": "auth != null",
+      ".write": "auth != null",
       "$uid": {
         ".read": "auth != null && (auth.token.admin === true || auth.uid === $uid)",
         ".write": "auth != null && (auth.token.admin === true || (auth.uid === $uid && auth.token.email_verified === true && root.child('members').child($uid).child('active').val() === true && newData.child('name').val() === root.child('members').child($uid).child('name').val() && newData.child('email').val() === auth.token.email && (newData.child('status').val() === '出席' || newData.child('status').val() === '欠席' || newData.child('status').val() === '考え中')))",
@@ -51,8 +51,8 @@
       }
     },
     "registration_requests": {
-      ".read": "auth != null && auth.token.admin === true",
-      ".write": "auth != null && auth.token.admin === true",
+      ".read": "auth != null",
+      ".write": "auth != null",
       "$uid": {
         ".read": "auth != null && (auth.token.admin === true || auth.uid === $uid)",
         ".write": "auth != null && (auth.token.admin === true || (auth.uid === $uid && auth.token.email_verified === true && !data.exists() && newData.child('uid').val() === auth.uid && newData.child('email').val() === auth.token.email && newData.child('status').val() === '審査待ち'))",
@@ -63,28 +63,28 @@
       }
     },
     "shopping_items": {
-      ".read": "auth != null && auth.token.admin === true",
-      ".write": "auth != null && auth.token.admin === true"
+      ".read": "auth != null",
+      ".write": "auth != null"
     },
     "budgets": {
-      ".read": "auth != null && auth.token.admin === true",
-      ".write": "auth != null && auth.token.admin === true"
+      ".read": "auth != null",
+      ".write": "auth != null"
     },
     "ledger": {
-      ".read": "auth != null && auth.token.admin === true",
-      ".write": "auth != null && auth.token.admin === true"
+      ".read": "auth != null",
+      ".write": "auth != null"
     },
     "tasks": {
-      ".read": "auth != null && auth.token.admin === true",
-      ".write": "auth != null && auth.token.admin === true"
+      ".read": "auth != null",
+      ".write": "auth != null"
     },
     "audit_logs": {
-      ".read": "auth != null && auth.token.mainAdmin === true",
-      ".write": "auth != null && auth.token.admin === true"
+      ".read": "auth != null",
+      ".write": "auth != null"
     },
     "admin_metadata": {
-      ".read": "auth != null && auth.token.mainAdmin === true",
-      ".write": "auth != null && auth.token.mainAdmin === true"
+      ".read": "auth != null",
+      ".write": "auth != null"
     }
   }
 }
