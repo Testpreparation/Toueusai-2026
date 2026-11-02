@@ -1,0 +1,62 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "members": {
+      "$uid": {
+        ".read": "auth != null && (auth.token.admin === true || auth.uid === $uid)",
+        ".write": "auth != null && auth.token.admin === true",
+        ".validate": "newData.hasChildren(['name','surname','given','email','active'])",
+        "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
+        "surname": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
+        "given": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
+        "email": { ".validate": "newData.isString() && newData.val().length <= 254" },
+        "active": { ".validate": "newData.isBoolean()" },
+        "$other": { ".validate": "$other === 'createdAt' || $other === 'updatedAt'" }
+      }
+    },
+    "attendance": {
+      "$uid": {
+        ".read": "auth != null && (auth.token.admin === true || auth.uid === $uid)",
+        ".write": "auth != null && (auth.token.admin === true || (auth.uid === $uid && auth.token.email_verified === true && root.child('members').child($uid).child('active').val() === true && newData.child('name').val() === root.child('members').child($uid).child('name').val() && newData.child('email').val() === auth.token.email && (newData.child('status').val() === '出席' || newData.child('status').val() === '欠席' || newData.child('status').val() === '考え中')))",
+        ".validate": "newData.hasChildren(['name','status','email'])",
+        "name": { ".validate": "newData.isString() && newData.val().length <= 100" },
+        "status": { ".validate": "newData.val() === '出席' || newData.val() === '欠席' || newData.val() === '考え中'" },
+        "email": { ".validate": "newData.isString() && newData.val() === auth.token.email" },
+        "$other": { ".validate": "$other === 'updatedAt'" }
+      }
+    },
+    "registration_requests": {
+      "$uid": {
+        ".read": "auth != null && (auth.token.admin === true || auth.uid === $uid)",
+        ".write": "auth != null && (auth.token.admin === true || (auth.uid === $uid && auth.token.email_verified === true && !data.exists() && newData.child('uid').val() === auth.uid && newData.child('email').val() === auth.token.email && newData.child('status').val() === '審査待ち'))",
+        ".validate": "newData.hasChildren(['uid','name','surname','given','email','status'])",
+        "$other": { ".validate": "$other === 'uid' || $other === 'name' || $other === 'surname' || $other === 'given' || $other === 'email' || $other === 'status' || $other === 'createdAt' }
+      }
+    },
+    "shopping_items": {
+      ".read": "auth != null && auth.token.admin === true",
+      ".write": "auth != null && auth.token.admin === true"
+    },
+    "budgets": {
+      ".read": "auth != null && auth.token.admin === true",
+      ".write": "auth != null && auth.token.admin === true"
+    },
+    "ledger": {
+      ".read": "auth != null && auth.token.admin === true",
+      ".write": "auth != null && auth.token.admin === true"
+    },
+    "tasks": {
+      ".read": "auth != null && auth.token.admin === true",
+      ".write": "auth != null && auth.token.admin === true"
+    },
+    "audit_logs": {
+      ".read": "auth != null && auth.token.mainAdmin === true",
+      ".write": "auth != null && auth.token.admin === true"
+    },
+    "admin_metadata": {
+      ".read": "auth != null && auth.token.mainAdmin === true",
+      ".write": "auth != null && auth.token.mainAdmin === true"
+    }
+  }
+}
