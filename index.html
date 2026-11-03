@@ -519,18 +519,36 @@ const GOOGLE_SHEET_WEB_APP_URL='https://script.google.com/a/macros/uni.mejiro.ac
 const GOOGLE_SHEET_URL='https://docs.google.com/spreadsheets/d/1e1lmACXbVsKE2GPcLRfYxDNJkDRy2gLh/edit';
 let sheetSyncTimer=null,sheetPollTimer=null,sheetSyncBusy=false,sheetLastMembers='';
 function syncMembersToSheet(){
-  if(sheetSyncBusy||!state.members.length)return;
+  if(sheetSyncBusy)return;
+  if(!state.members.length){
+    const status=$('sheetSyncStatus');
+    if(status)status.textContent='アプリ内の名簿が空のため送信できません。';
+    return;
+  }
   sheetSyncBusy=true;
   const status=$('sheetSyncStatus');
-  if(status)status.textContent='Googleスプレッドシートへ名簿を送信しています…';
-  const payload=JSON.stringify({members:state.members});
-  const body='payload='+encodeURIComponent(payload);
+  const membersSnapshot=state.members.map(m=>({...m}));
+  if(status)status.textContent=membersSnapshot.length+'人の名簿をGoogleスプレッドシートへ送信しています…';
+  const body='payload='+encodeURIComponent(JSON.stringify({members:membersSnapshot}));
   fetch(GOOGLE_SHEET_WEB_APP_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body})
-    .then(()=>{if(status)status.textContent='名簿の送信を行いました。スプレッドシートで反映を確認してください。'})
+    .then(()=>{
+      if(status)status.textContent='送信要求を送信しました。保存結果を確認しています…';
+      setTimeout(()=>{
+        readMembersFromSheet((data)=>{
+          if(!data||data.success===false){
+            if(status)status.textContent='保存結果を確認できません。Apps Scriptの実行履歴を確認してください。';
+          }else if(Array.isArray(data.members)&&data.members.length===membersSnapshot.length){
+            if(status)status.textContent='スプレッドシートへの保存を確認しました（'+data.members.length+'人）。';
+          }else{
+            if(status)status.textContent='送信後もシートは'+(data.members||[]).length+'人です。Apps Scriptの実行履歴を確認してください。';
+          }
+        });
+      },2500);
+    })
     .catch(()=>{if(status)status.textContent='送信に失敗しました。Apps Scriptの公開設定を確認してください。'})
     .finally(()=>{sheetSyncBusy=false;});
 }
-function readMembersFromSheet(){
+function readMembersFromSheet(onResult){
   const callback='sheetSyncCallback_'+Date.now()+'_'+Math.random().toString(36).slice(2);
   const script=document.createElement('script');
   let finished=false;
