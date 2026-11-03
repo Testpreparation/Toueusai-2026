@@ -515,7 +515,7 @@ const $=id=>document.getElementById(id);
 const yen=n=>'¥'+(Number(n)||0).toLocaleString('ja-JP');
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const GOOGLE_SHEET_WEB_APP_URL='https://script.google.com/a/macros/uni.mejiro.ac.jp/s/AKfycbzjpVoimv3hTC-ukEJQtFu4_PoFr4S2dPFta82Kkms9Wh_k0NwMeN5iIOPLRHi2k8E1qg/exec';
+const GOOGLE_SHEET_WEB_APP_URL='https://script.google.com/a/macros/uni.mejiro.ac.jp/s/AKfycbxx4LznDn2RI401NNxdQ7rpniSKb5LYATKBZjWQiIUVJl1F8V8t1yPJGS8nnZNzBKDPpw/exec';
 const GOOGLE_SHEET_URL='https://docs.google.com/spreadsheets/d/1e1lmACXbVsKE2GPcLRfYxDNJkDRy2gLh/edit';
 let sheetSyncTimer=null,sheetPollTimer=null,sheetSyncBusy=false,sheetLastMembers='';
 function syncMembersToSheet(){
