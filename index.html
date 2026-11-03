@@ -403,8 +403,19 @@ try {
   };
   let firstSnapshot = true;
   let authStarted = false;
+  let signInStarted = false;
   onAuthStateChanged(auth, (user) => {
-    if (!user || authStarted) return;
+    if (!user) {
+      if (!signInStarted) {
+        signInStarted = true;
+        signInAnonymously(auth).catch((e) => {
+          console.error(e);
+          showError("クラウド接続に失敗しました。通信とFirebaseの匿名認証設定を確認してください。");
+        });
+      }
+      return;
+    }
+    if (authStarted) return;
     authStarted = true;
     // A single realtime listener replaces the separate get()+onValue round trips.
     onValue(dataRef, async (remoteSnap) => {
@@ -444,10 +455,6 @@ try {
       console.error(error);
       showError("同期エラー：Firebaseのルールと通信を確認してください。");
     });
-  });
-  signInAnonymously(auth).catch((e) => {
-    console.error(e);
-    showError("クラウド接続に失敗しました。通信とFirebaseの匿名認証設定を確認してください。");
   });
 } catch (e) {
   console.error(e);
