@@ -234,6 +234,48 @@ th,td{padding:12px}
  button:hover,.tab:hover{filter:none}
  button:active,.tab:active{opacity:.88}
 }
+
+/* Accounting dashboard: clearer hierarchy and responsive chart sizing */
+#accounting>.panel:first-child{padding:clamp(14px,2.5vw,26px)}
+#accounting .totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
+#accounting .totals>div{background:#f7f9fc;border:1px solid #e8edf4;border-radius:14px;padding:14px 12px;display:flex;flex-direction:column;gap:7px;font-size:12px;color:#66758a;min-width:0}
+#accounting .totals strong{font-size:clamp(17px,2vw,23px);line-height:1.25;color:var(--ink);overflow-wrap:anywhere}
+#accounting .totals>div:first-child strong{color:#277b45}
+#accounting .totals>div:nth-child(3) strong{color:#258b38}
+#accounting .totals>div:last-child strong{color:#3978bf}
+#accounting .budget-meter{display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,.8fr);grid-template-rows:auto 1fr;align-items:center;column-gap:clamp(14px,3vw,30px);row-gap:14px;padding:18px clamp(10px,2vw,20px);background:linear-gradient(135deg,#fbfdfb,#f8fbff);border:1px solid #e8edf1;border-radius:18px}
+#accounting .meter-heading{grid-column:1/-1;margin:0}
+#accounting .meter-ring{grid-column:1;grid-row:2;width:min(100%,360px);max-height:360px;justify-self:center;filter:none}
+#accounting .meter-details{grid-column:2;grid-row:2;width:100%;max-width:360px}
+#accounting .meter-details h3{display:block;margin:0 0 10px;font-size:15px;color:#526276}
+#accounting .meter-line{padding:12px 8px;font-size:13px}
+#accounting .meter-line strong{font-size:clamp(15px,1.8vw,19px)}
+#accounting .meter-target{font-size:16px;padding:9px 18px}
+#accounting .meter-center strong{font-size:clamp(27px,4vw,43px);letter-spacing:-.5px}
+#accounting .meter-center .meter-caption{font-size:15px}
+#accounting .meter-center .meter-sub{font-size:11px}
+#accounting .panel+.panel{margin-top:16px}
+#accounting #expenseForm .field{min-width:140px}
+#accounting #expenseForm button{align-self:end}
+#accounting .table-wrap{max-width:100%;overflow-x:auto}
+@media(max-width:700px){
+ #accounting .totals{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ #accounting .totals>div{min-height:74px;padding:12px}
+ #accounting .budget-meter{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;padding:16px 12px;gap:12px}
+ #accounting .meter-heading{grid-column:1;grid-row:1}
+ #accounting .meter-ring{grid-column:1;grid-row:2;width:min(74vw,310px);max-height:none}
+ #accounting .meter-details{grid-column:1;grid-row:3;width:100%;max-width:420px;justify-self:center}
+ #accounting .meter-details h3{text-align:center}
+ #accounting .meter-line{padding:10px 8px}
+ #accounting #expenseForm .field{min-width:0}
+}
+@media(max-width:390px){
+ #accounting .totals>div{padding:10px}
+ #accounting .totals strong{font-size:17px}
+ #accounting .meter-ring{width:min(76vw,270px)}
+ #accounting .meter-center strong{font-size:clamp(25px,7vw,34px)}
+ #accounting .meter-target{font-size:14px;padding:8px 13px}
+}
 </style>
 </head>
 <body>
@@ -304,7 +346,7 @@ th,td{padding:12px}
 </nav>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getDatabase, ref, get, set, onValue } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 const firebaseConfig = {
@@ -359,25 +401,32 @@ try {
       }, 350);
     }
   };
-  await signInAnonymously(auth);
-  onAuthStateChanged(auth, async (user) => {
-    if (!user || ready) return;
-    try {
-      coverMessage.textContent = "保存済みデータを確認しています…";
-      const snap = await get(dataRef);
-      if (snap.exists()) {
-        window.applyCloudState(snap.val());
-      } else {
-        const local = window.getLocalAppState();
-        await set(dataRef, local);
-        lastWritten = JSON.stringify(local);
-      }
-      ready = true;
-      window.firebaseSync.ready = true;
-      cloudMessage.textContent = "☁️ クラウド同期中";
-      cloudMessage.classList.add("connected");
-      cover.style.display = "none";
-      onValue(dataRef, (remoteSnap) => {
+  let firstSnapshot = true;
+  let authStarted = false;
+  onAuthStateChanged(auth, (user) => {
+    if (!user || authStarted) return;
+    authStarted = true;
+    // A single realtime listener replaces the separate get()+onValue round trips.
+    onValue(dataRef, async (remoteSnap) => {
+      try {
+        if (firstSnapshot) {
+          firstSnapshot = false;
+          if (remoteSnap.exists()) {
+            const remoteState = remoteSnap.val();
+            window.applyCloudState(remoteState);
+            lastWritten = JSON.stringify(remoteState);
+          } else {
+            const local = window.getLocalAppState();
+            await set(dataRef, local);
+            lastWritten = JSON.stringify(local);
+          }
+          ready = true;
+          window.firebaseSync.ready = true;
+          cloudMessage.textContent = "☁️ クラウド同期中";
+          cloudMessage.classList.add("connected");
+          cover.style.display = "none";
+          return;
+        }
         if (!remoteSnap.exists() || writing) return;
         const remoteState = remoteSnap.val();
         const remoteJson = JSON.stringify(remoteState);
@@ -387,15 +436,18 @@ try {
           window.applyCloudState(remoteState);
           lastWritten = remoteJson;
         }
-      }, (error) => {
-        console.error(error);
-        cloudMessage.textContent = "同期エラー：Firebaseのルールを確認してください。";
-        cloudMessage.classList.remove("connected");
-      });
-    } catch (e) {
-      console.error(e);
-      showError("クラウド接続に失敗しました。Firebase Authenticationで匿名認証を有効にし、Realtime Databaseのルールを確認してください。");
-    }
+      } catch (e) {
+        console.error(e);
+        showError("クラウド同期に失敗しました。通信とFirebaseルールを確認してください。");
+      }
+    }, (error) => {
+      console.error(error);
+      showError("同期エラー：Firebaseのルールと通信を確認してください。");
+    });
+  });
+  signInAnonymously(auth).catch((e) => {
+    console.error(e);
+    showError("クラウド接続に失敗しました。通信とFirebaseの匿名認証設定を確認してください。");
   });
 } catch (e) {
   console.error(e);
