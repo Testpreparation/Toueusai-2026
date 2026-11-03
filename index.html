@@ -520,36 +520,28 @@ const GOOGLE_SHEET_URL='https://docs.google.com/spreadsheets/d/1e1lmACXbVsKE2GPc
 let sheetSyncTimer=null,sheetPollTimer=null,sheetSyncBusy=false,sheetLastMembers='';
 function syncMembersToSheet(){
   if(sheetSyncBusy)return;
+  // 名簿が空の場合は、初期状態や他項目の編集による誤消去を防ぐため送信しない
   if(!state.members.length){
     const status=$('sheetSyncStatus');
-    if(status)status.textContent='アプリ内の名簿が空のため送信できません。';
+    if(status)status.textContent='名簿が0人のため自動送信を保留しています。シート側で全員を削除した場合は、その状態をアプリに反映します。';
     return;
   }
   sheetSyncBusy=true;
   const status=$('sheetSyncStatus');
   const membersSnapshot=state.members.map(m=>({...m}));
-  if(status)status.textContent=membersSnapshot.length+'人の名簿をGoogleスプレッドシートへ送信しています…';
-  const body='payload='+encodeURIComponent(JSON.stringify({members:membersSnapshot}));
-  let timedOut=false;
-  const request=fetch(GOOGLE_SHEET_WEB_APP_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body});
-  const timeout=new Promise((_,reject)=>setTimeout(()=>{timedOut=true;reject(new Error('timeout'))},15000));
-  Promise.race([request,timeout])
-    .then(()=>{
-      if(status)status.textContent='送信要求を送信しました。保存結果を確認しています…';
-      setTimeout(()=>{
-        readMembersFromSheet((data)=>{
-          if(!data||data.success===false){
-            if(status)status.textContent='保存結果を確認できません。Apps Scriptの公開設定・実行履歴を確認してください。';
-          }else if(Array.isArray(data.members)&&data.members.length===membersSnapshot.length){
-            if(status)status.textContent='スプレッドシートへの保存を確認しました（'+data.members.length+'人）。';
-          }else{
-            if(status)status.textContent='送信後もシートは'+(data.members||[]).length+'人です。Apps Scriptの実行履歴を確認してください。';
-          }
-        });
-      },2000);
-    })
+  const body='payload='+encodeURIComponent(JSON.stringify({members:membersSnapshot,clientUpdatedAt:Date.now()}));
+  if(status)status.textContent=membersSnapshot.length+'人の名簿をGoogleスプレッドシートへ同期しています…';
+  fetch(GOOGLE_SHEET_WEB_APP_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body})
+    .then(()=>new Promise(resolve=>setTimeout(resolve,1800)))
+    .then(()=>readMembersFromSheet((data)=>{
+      if(!data||data.success===false){
+        if(status)status.textContent='保存結果を確認できません。Apps Scriptの実行履歴を確認してください。';
+        return;
+      }
+      if(status)status.textContent='スプレッドシートとの同期を確認しました（'+membersSnapshot.length+'人）。';
+    }))
     .catch(()=>{
-      if(status)status.textContent=timedOut?'送信応答がありません。通信環境とApps Scriptの実行履歴を確認してください。':'送信に失敗しました。Apps Scriptの公開設定を確認してください。';
+      if(status)status.textContent='同期に失敗しました。Apps Scriptの公開設定・実行履歴を確認してください。';
     })
     .finally(()=>{sheetSyncBusy=false;});
 }
@@ -562,23 +554,22 @@ function readMembersFromSheet(onResult){
   const timeout=setTimeout(()=>finish({success:false,error:'timeout'}),12000);
   window[callback]=(data)=>{
     finish(data);
-    if(!data||data.success===false||!Array.isArray(data.members))return;
-    // 空のシートでアプリ側の名簿を消さない
-    if(!data.members.length)return;
+    if(!data||data.success===false||!Array.isArray(data.members)||data.authoritative!==true)return;
     const mapped=data.members.map(m=>{
       const existing=state.members.find(x=>x.id===m.id)||(state.members.find(x=>normalizeMemberName(x.name)===normalizeMemberName(m.name)));
       return {id:existing?.id||m.id||uid(),name:String(m.name||''),department:String(m.department||getDepartment(m.name)||''),attendance:String(m.attendance||'未定'),notes:String(m.notes||'')};
     });
     const incoming=JSON.stringify(mapped);
     const current=JSON.stringify(state.members);
+    sheetLastMembers=incoming;
     if(incoming===current)return;
+    // シートの内容を正として名簿を置き換える。空配列も明示的な全削除として反映。
     state.members=mapped;
     localStorage.setItem(KEY,JSON.stringify(state));
     render();
     if(window.firebaseSync&&window.firebaseSync.ready)window.firebaseSync.save(state);
-    sheetLastMembers=incoming;
     const status=$('sheetSyncStatus');
-    if(status)status.textContent='スプレッドシートの変更をアプリに反映しました。';
+    if(status)status.textContent='スプレッドシートの名簿変更をアプリに反映しました（'+mapped.length+'人）。';
   };
   script.onerror=()=>finish({success:false,error:'読み込み失敗'});
   script.src=GOOGLE_SHEET_WEB_APP_URL+'?callback='+encodeURIComponent(callback)+'&t='+Date.now();
@@ -587,13 +578,8 @@ function readMembersFromSheet(onResult){
 function startSheetPolling(){
   if(sheetPollTimer)return;
   readMembersFromSheet();
-  sheetPollTimer=setInterval(readMembersFromSheet,15000);
+  sheetPollTimer=setInterval(()=>{if(!sheetSyncBusy)readMembersFromSheet()},15000);
 }
-function save(){localStorage.setItem(KEY,JSON.stringify(state));render();if(window.firebaseSync&&window.firebaseSync.ready)window.firebaseSync.save(state);clearTimeout(sheetSyncTimer);sheetSyncTimer=setTimeout(syncMembersToSheet,900)}
-function normalizeState(v){state={members:[],timeline:[],shopping:[],expenses:[],budget:40000,...(v&&typeof v==='object'?v:{})};if(!Array.isArray(state.members))state.members=[];if(!Array.isArray(state.timeline))state.timeline=[];if(!Array.isArray(state.shopping))state.shopping=[];if(!Array.isArray(state.expenses))state.expenses=[];state.members=state.members.map(m=>({id:m.id||uid(),name:m.name||'',department:m.department||getDepartment(m.name)||'',attendance:m.attendance||'未定',notes:m.notes||''}));state.shopping=state.shopping.map(x=>({...x,id:x.id||uid()}));state.expenses=state.expenses.map(e=>({...e,id:e.id||uid()}))}
-function load(){try{const v=JSON.parse(localStorage.getItem(KEY));if(v&&typeof v==='object')normalizeState(v)}catch(e){};render()}
-window.getLocalAppState=()=>state;
-window.applyCloudState=(v)=>{normalizeState(v);localStorage.setItem(KEY,JSON.stringify(state));render();if(state.members.length){clearTimeout(sheetSyncTimer);sheetSyncTimer=setTimeout(syncMembersToSheet,1800)}};
 function csvCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
 function download(name,content,type='text/csv;charset=utf-8'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff',content],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href)}
 function exportCsv(name,rows){download(name,rows.map(r=>r.map(csvCell).join(',')).join('\r\n'))}
