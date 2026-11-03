@@ -417,21 +417,13 @@ try {
   };
   let firstSnapshot = true;
   let authStarted = false;
-  let signInStarted = false;
-  onAuthStateChanged(auth, (user) => {
-    if (!user) {
-      if (!signInStarted) {
-        signInStarted = true;
-        signInAnonymously(auth).catch((e) => {
-          console.error(e);
-          showError("クラウド接続に失敗しました。通信とFirebaseの匿名認証設定を確認してください。");
-        });
-      }
-      return;
-    }
+  let connectionTimer = setTimeout(() => {
+    if (!ready) showError("接続がタイムアウトしました。Firebaseの匿名認証・データベースルール・通信を確認してください。");
+  }, 12000);
+
+  const startDatabaseSync = () => {
     if (authStarted) return;
     authStarted = true;
-    // A single realtime listener replaces the separate get()+onValue round trips.
     onValue(dataRef, async (remoteSnap) => {
       try {
         if (firstSnapshot) {
@@ -447,6 +439,7 @@ try {
           }
           ready = true;
           window.firebaseSync.ready = true;
+          clearTimeout(connectionTimer);
           cloudMessage.textContent = "☁️ クラウド同期中";
           cloudMessage.classList.add("connected");
           cover.style.display = "none";
@@ -463,12 +456,34 @@ try {
         }
       } catch (e) {
         console.error(e);
+        clearTimeout(connectionTimer);
         showError("クラウド同期に失敗しました。通信とFirebaseルールを確認してください。");
       }
     }, (error) => {
       console.error(error);
-      showError("同期エラー：Firebaseのルールと通信を確認してください。");
+      clearTimeout(connectionTimer);
+      showError("同期エラー：Firebaseのデータベースルールまたは通信を確認してください。");
     });
+  };
+
+  // Wait for Firebase to restore any existing anonymous session before creating a new one.
+  auth.authStateReady().then(async () => {
+    if (auth.currentUser) {
+      startDatabaseSync();
+      return;
+    }
+    try {
+      await signInAnonymously(auth);
+      startDatabaseSync();
+    } catch (e) {
+      console.error(e);
+      clearTimeout(connectionTimer);
+      showError("匿名認証に失敗しました。Firebase Authenticationで匿名認証が有効か確認してください。");
+    }
+  }).catch((e) => {
+    console.error(e);
+    clearTimeout(connectionTimer);
+    showError("Firebase認証の初期化に失敗しました。ページを再読み込みし、通信設定を確認してください。");
   });
 } catch (e) {
   console.error(e);
