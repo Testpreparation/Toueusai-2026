@@ -553,7 +553,21 @@ $('saveBudget').onclick=()=>{state.budget=Math.max(0,Number($('budgetInput').val
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.section').forEach(x=>x.classList.toggle('active',x.id===b.dataset.tab));document.querySelector('.stats').style.display=b.dataset.tab==='members'?'grid':'none'});
 function parseCsv(text){const rows=[];let row=[],cell='',q=false;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(c==='"'&&text[i+1]==='"'){cell+='"';i++}else if(c==='"')q=false;else cell+=c}else if(c==='"')q=true;else if(c===','){row.push(cell);cell=''}else if(c==='\n'){row.push(cell.replace(/\r$/,''));rows.push(row);row=[];cell=''}else cell+=c}if(cell.length||row.length){row.push(cell.replace(/\r$/,''));rows.push(row)}return rows.filter(r=>r.some(c=>c.trim()!=='')).map(r=>r.map(c=>c.trim().replace(/^\ufeff/,'')))}
 function findCol(headers,tests){return headers.findIndex(h=>tests.some(t=>t.test(h)))}
-$('exportMembers').onclick=()=>exportCsv('メンバー表.csv',[['No.','氏名','出欠','アレルギー・連絡事項'],...state.members.map((m,i)=>[i+1,m.name,m.attendance,m.notes])]);
+$('exportMembers').onclick=()=>{
+  const rows=[['No.','氏名','出欠','アレルギー・連絡事項'],...state.members.map((m,i)=>[i+1,m.name,m.attendance,m.notes])];
+  const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+
+    'body{font-family:Meiryo,"Yu Gothic",sans-serif;font-size:12pt;margin:24px}'+
+    'h1{font-size:18pt;margin:0 0 16px}table{border-collapse:collapse;width:100%;table-layout:auto}'+
+    'th,td{border:1px solid #9aa9bb;padding:9px 12px;font-size:12pt;text-align:left;vertical-align:middle}'+
+    'th{background:#e6f2ff;font-weight:bold;text-align:center}'+
+    'td:first-child,td:nth-child(3){text-align:center;white-space:nowrap}'+
+    '</style></head><body><h1>メンバー表</h1><table><thead><tr>'+rows[0].map(v=>'<th>'+esc(v)+'</th>').join('')+'</tr></thead><tbody>'+
+    rows.slice(1).map(row=>'<tr>'+row.map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>').join('')+
+    '</tbody></table></body></html>';
+  const blob=new Blob(['\ufeff',html],{type:'application/vnd.ms-excel;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='メンバー表.xls';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
 $('exportAccounting').onclick=()=>exportCsv('会計簿.csv',[['日付','内容','区分','金額','支払った人','メモ'],...state.expenses.map(e=>[e.date,e.name,e.source==='shopping'?'買い出し':'手入力',e.amount,e.payer,e.note])]);
 $('exportBackup').onclick=()=>download('桐榮祭2026_運営管理バックアップ.json',JSON.stringify(state,null,2),'application/json;charset=utf-8');
 $('restoreBackup').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const v=JSON.parse(await f.text());if(!v||!Array.isArray(v.members)||!Array.isArray(v.shopping)||!Array.isArray(v.expenses))throw Error();if(!confirm('現在のデータをバックアップ内容で置き換えますか？'))return;state={...state,...v};save();alert('バックアップを復元しました')}catch(err){alert('このバックアップファイルは読み込めませんでした')}e.target.value=''};
