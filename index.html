@@ -141,8 +141,8 @@ footer{padding-bottom:8px}
 <body>
 <header><h1>桐榮祭 2026｜運営管理</h1><p>メンバー表・買い出しリスト・会計簿</p></header>
 <main class="wrap">
-<div class="notice"><strong>クラウド同期：</strong><span id="cloudMessage">Firebaseに接続しています。接続完了までこの画面を操作しないでください。</span> メンバー表はGoogleフォームの回答CSVから読み込めます。念のため「バックアップを書き出す」も定期的に利用してください。</div>
-<div id="cloudCover" style="position:fixed;inset:0;z-index:2500;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(245,248,252,.97);text-align:center">
+<div class="notice"><strong>クラウド同期：</strong><span id="cloudMessage">バックグラウンドで接続中です。画面はすぐに操作できます。</span> メンバー表はGoogleフォームの回答CSVから読み込めます。念のため「バックアップを書き出す」も定期的に利用してください。</div>
+<div id="cloudCover" style="position:fixed;inset:0;z-index:2500;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(245,248,252,.97);text-align:center">
  <div style="max-width:440px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:0 12px 40px #203b5b12">
   <div style="font-size:32px">☁️</div><h2 style="margin:8px 0">桐榮祭2026 運営管理</h2>
   <p id="cloudCoverMessage" class="muted">ログイン操作なしでクラウドに接続しています…</p>
@@ -204,7 +204,6 @@ footer{padding-bottom:8px}
 <button class="tab" data-tab="accounting" aria-label="会計簿"><span class="nav-icon" aria-hidden="true">🧾</span><span>会計簿</span></button>
 <button class="tab" data-tab="settings" aria-label="設定・保存"><span class="nav-icon" aria-hidden="true">⚙️</span><span>設定・保存</span></button>
 </nav>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getDatabase, ref, get, set, onValue } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
@@ -225,8 +224,10 @@ const cloudMessage = document.getElementById("cloudMessage");
 const cover = document.getElementById("cloudCover");
 const showError = (message) => {
   coverMessage.textContent = message;
-  cloudMessage.textContent = message;
-  cover.style.display = "flex";
+  cloudMessage.textContent = "⚠️ " + message;
+  cloudMessage.classList.remove("connected");
+  // Keep the app usable even when the cloud is slow or unavailable.
+  cover.style.display = "none";
 };
 try {
   const app = initializeApp(firebaseConfig);
@@ -365,9 +366,16 @@ $('clearAll').onclick=()=>{if(confirm('メンバー・買い出し・会計の�
 
 $('readReceipt').onclick=async()=>{
  const file=$('receiptImage').files[0];if(!file){alert('レシート画像を撮影または選択してください');return}
- if(!window.Tesseract){alert('文字認識ライブラリを読み込めませんでした。通信環境を確認してページを再読み込みしてください。');return}
- $('ocrStatus').textContent='画像を解析中です。初回は少し時間がかかります…';$('readReceipt').disabled=true;
+ $('ocrStatus').textContent='文字認識ライブラリを準備しています…';$('readReceipt').disabled=true;
  try{
+  if(!window.Tesseract){
+   await new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    script.onload=resolve;script.onerror=()=>reject(new Error('OCRライブラリの読み込みに失敗しました'));
+    document.head.appendChild(script);
+   });
+  }
   const worker=await Tesseract.createWorker('jpn+eng',1,{logger:m=>{if(m.status)$('ocrStatus').textContent='読み取り中：'+m.status+(m.progress!==undefined?' '+Math.round(m.progress*100)+'%':'')}});
   const result=await worker.recognize(file);await worker.terminate();
   const text=result.data.text||'';$('receiptText').value=text;
