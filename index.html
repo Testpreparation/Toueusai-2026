@@ -515,23 +515,61 @@ const $=id=>document.getElementById(id);
 const yen=n=>'¥'+(Number(n)||0).toLocaleString('ja-JP');
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const GOOGLE_SHEET_WEB_APP_URL='https://script.google.com/a/macros/uni.mejiro.ac.jp/s/AKfycbwB4zBxnD-Qms5pDri6pZLLmbV2mEpJqT0D7gTXDJMxBuDHX8FXKf0CGSKFAR9UU3_gig/exec';
+const GOOGLE_SHEET_WEB_APP_URL='https://script.google.com/a/macros/uni.mejiro.ac.jp/s/AKfycbzjpVoimv3hTC-ukEJQtFu4_PoFr4S2dPFta82Kkms9Wh_k0NwMeN5iIOPLRHi2k8E1qg/exec';
 const GOOGLE_SHEET_URL='https://docs.google.com/spreadsheets/d/1e1lmACXbVsKE2GPcLRfYxDNJkDRy2gLh/edit';
-let sheetSyncTimer=null;
+let sheetSyncTimer=null,sheetPollTimer=null,sheetSyncBusy=false,sheetLastMembers='';
 function syncMembersToSheet(){
+  if(sheetSyncBusy||!state.members.length)return;
+  sheetSyncBusy=true;
   const status=$('sheetSyncStatus');
   if(status)status.textContent='Googleスプレッドシートへ名簿を送信しています…';
   const payload=JSON.stringify({members:state.members});
   const body='payload='+encodeURIComponent(payload);
   fetch(GOOGLE_SHEET_WEB_APP_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body})
-    .then(()=>{if(status)status.textContent='名簿の送信を行いました。反映はスプレッドシートで確認してください。'})
-    .catch(()=>{if(status)status.textContent='名簿の送信に失敗しました。Apps Scriptの公開設定とURLを確認してください。'});
+    .then(()=>{if(status)status.textContent='名簿の送信を行いました。スプレッドシートで反映を確認してください。'})
+    .catch(()=>{if(status)status.textContent='送信に失敗しました。Apps Scriptの公開設定を確認してください。'})
+    .finally(()=>{sheetSyncBusy=false;});
+}
+function readMembersFromSheet(){
+  const callback='sheetSyncCallback_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  const script=document.createElement('script');
+  let finished=false;
+  const cleanup=()=>{if(finished)return;finished=true;delete window[callback];script.remove();};
+  const timeout=setTimeout(cleanup,12000);
+  window[callback]=(data)=>{
+    clearTimeout(timeout);cleanup();
+    if(!data||data.success===false||!Array.isArray(data.members))return;
+    // 空のシートでアプリ側の名簿を消さない
+    if(!data.members.length)return;
+    const mapped=data.members.map(m=>{
+      const existing=state.members.find(x=>x.id===m.id)||(state.members.find(x=>x.name===String(m.name||'')&&x.department===String(m.department||'')));
+      return {id:existing?.id||m.id||uid(),name:String(m.name||''),department:String(m.department||getDepartment(m.name)||''),attendance:String(m.attendance||'未定'),notes:String(m.notes||'')};
+    });
+    const incoming=JSON.stringify(mapped);
+    const current=JSON.stringify(state.members);
+    if(incoming===current)return;
+    state.members=mapped;
+    localStorage.setItem(KEY,JSON.stringify(state));
+    render();
+    if(window.firebaseSync&&window.firebaseSync.ready)window.firebaseSync.save(state);
+    sheetLastMembers=incoming;
+    const status=$('sheetSyncStatus');
+    if(status)status.textContent='スプレッドシートの変更をアプリに反映しました。';
+  };
+  script.onerror=()=>{clearTimeout(timeout);cleanup();};
+  script.src=GOOGLE_SHEET_WEB_APP_URL+'?callback='+encodeURIComponent(callback)+'&t='+Date.now();
+  document.head.appendChild(script);
+}
+function startSheetPolling(){
+  if(sheetPollTimer)return;
+  readMembersFromSheet();
+  sheetPollTimer=setInterval(readMembersFromSheet,15000);
 }
 function save(){localStorage.setItem(KEY,JSON.stringify(state));render();if(window.firebaseSync&&window.firebaseSync.ready)window.firebaseSync.save(state);clearTimeout(sheetSyncTimer);sheetSyncTimer=setTimeout(syncMembersToSheet,900)}
 function normalizeState(v){state={members:[],timeline:[],shopping:[],expenses:[],budget:40000,...(v&&typeof v==='object'?v:{})};if(!Array.isArray(state.members))state.members=[];if(!Array.isArray(state.timeline))state.timeline=[];if(!Array.isArray(state.shopping))state.shopping=[];if(!Array.isArray(state.expenses))state.expenses=[];state.members=state.members.map(m=>({id:m.id||uid(),name:m.name||'',department:m.department||getDepartment(m.name)||'',attendance:m.attendance||'未定',notes:m.notes||''}));state.shopping=state.shopping.map(x=>({...x,id:x.id||uid()}));state.expenses=state.expenses.map(e=>({...e,id:e.id||uid()}))}
 function load(){try{const v=JSON.parse(localStorage.getItem(KEY));if(v&&typeof v==='object')normalizeState(v)}catch(e){};render()}
 window.getLocalAppState=()=>state;
-window.applyCloudState=(v)=>{normalizeState(v);localStorage.setItem(KEY,JSON.stringify(state));render()};
+window.applyCloudState=(v)=>{normalizeState(v);localStorage.setItem(KEY,JSON.stringify(state));render();if(state.members.length){clearTimeout(sheetSyncTimer);sheetSyncTimer=setTimeout(syncMembersToSheet,1800)}};
 function csvCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
 function download(name,content,type='text/csv;charset=utf-8'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff',content],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href)}
 function exportCsv(name,rows){download(name,rows.map(r=>r.map(csvCell).join(',')).join('\r\n'))}
@@ -585,7 +623,8 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelect
 function parseCsv(text){const rows=[];let row=[],cell='',q=false;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(c==='"'&&text[i+1]==='"'){cell+='"';i++}else if(c==='"')q=false;else cell+=c}else if(c==='"')q=true;else if(c===','){row.push(cell);cell=''}else if(c==='\n'){row.push(cell.replace(/\r$/,''));rows.push(row);row=[];cell=''}else cell+=c}if(cell.length||row.length){row.push(cell.replace(/\r$/,''));rows.push(row)}return rows.filter(r=>r.some(c=>c.trim()!=='')).map(r=>r.map(c=>c.trim().replace(/^\ufeff/,'')))}
 function findCol(headers,tests){return headers.findIndex(h=>tests.some(t=>t.test(h)))}
 $('openMemberSheet').onclick=()=>window.open(GOOGLE_SHEET_URL,'_blank','noopener');
-$('syncMemberSheet').onclick=syncMembersToSheet;
+$('syncMemberSheet').onclick=()=>{readMembersFromSheet();setTimeout(syncMembersToSheet,500)};
+startSheetPolling();
 $('exportMembers').onclick=async()=>{
   try{
     if(!window.XLSX){
