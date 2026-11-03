@@ -309,7 +309,7 @@ th,td{padding:12px}
 </nav>
 <section class="section active" id="members">
 <div class="panel"><h2>メンバーを手動追加</h2><form id="memberForm" class="row"><div class="field"><label>氏名 *</label><input id="memberName" required placeholder="例：桐榮 花子"></div><div class="field"><label>出欠</label><select id="memberAttendance"><option>出席</option><option>欠席</option><option>未定</option></select></div><div class="field"><label>アレルギー・連絡事項</label><input id="memberNotes" placeholder="任意"></div><button class="primary">追加</button></form></div>
-<div class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">メンバー一覧</h2><button class="secondary small" id="exportMembers">メンバーCSVを書き出す</button></div><div class="toolbar"><div class="field"><label for="memberSearch">名前で検索</label><input id="memberSearch" type="search" placeholder="名前を入力して検索"></div><div class="field"><label for="memberFilter">出欠で絞り込み</label><select id="memberFilter"><option value="all">すべて表示</option><option value="出席">出席</option><option value="欠席">欠席</option><option value="未定">未定</option></select></div><span class="member-count" id="memberCountLabel">0人</span></div><p class="muted">氏名・出欠・連絡事項は一覧から直接編集できます。</p><div class="table-wrap"><table><thead><tr><th>#</th><th>氏名</th><th>出欠</th><th>アレルギー・連絡事項</th><th>操作</th></tr></thead><tbody id="memberRows"></tbody></table></div><div id="memberEmpty" class="empty">まだメンバーがいません。上のフォームから直接追加してください。</div></div>
+<div class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">メンバー一覧</h2><button class="secondary small" id="exportMembers">メンバー表をExcelで書き出す</button></div><div class="toolbar"><div class="field"><label for="memberSearch">名前で検索</label><input id="memberSearch" type="search" placeholder="名前を入力して検索"></div><div class="field"><label for="memberFilter">出欠で絞り込み</label><select id="memberFilter"><option value="all">すべて表示</option><option value="出席">出席</option><option value="欠席">欠席</option><option value="未定">未定</option></select></div><span class="member-count" id="memberCountLabel">0人</span></div><p class="muted">氏名・出欠・連絡事項は一覧から直接編集できます。</p><div class="table-wrap"><table><thead><tr><th>#</th><th>氏名</th><th>出欠</th><th>アレルギー・連絡事項</th><th>操作</th></tr></thead><tbody id="memberRows"></tbody></table></div><div id="memberEmpty" class="empty">まだメンバーがいません。上のフォームから直接追加してください。</div></div>
 </section>
 <section class="section" id="timeline">
 <div class="panel"><h2>当日のタイムライン</h2><p class="muted">当日の進行予定を時刻順に管理できます。開始時刻・終了時刻・内容・担当者・メモを登録してください。</p><form id="timelineForm" class="row">
@@ -553,20 +553,29 @@ $('saveBudget').onclick=()=>{state.budget=Math.max(0,Number($('budgetInput').val
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.section').forEach(x=>x.classList.toggle('active',x.id===b.dataset.tab));document.querySelector('.stats').style.display=b.dataset.tab==='members'?'grid':'none'});
 function parseCsv(text){const rows=[];let row=[],cell='',q=false;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(c==='"'&&text[i+1]==='"'){cell+='"';i++}else if(c==='"')q=false;else cell+=c}else if(c==='"')q=true;else if(c===','){row.push(cell);cell=''}else if(c==='\n'){row.push(cell.replace(/\r$/,''));rows.push(row);row=[];cell=''}else cell+=c}if(cell.length||row.length){row.push(cell.replace(/\r$/,''));rows.push(row)}return rows.filter(r=>r.some(c=>c.trim()!=='')).map(r=>r.map(c=>c.trim().replace(/^\ufeff/,'')))}
 function findCol(headers,tests){return headers.findIndex(h=>tests.some(t=>t.test(h)))}
-$('exportMembers').onclick=()=>{
-  const rows=[['No.','氏名','出欠','アレルギー・連絡事項'],...state.members.map((m,i)=>[i+1,m.name,m.attendance,m.notes])];
-  const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+
-    'body{font-family:Meiryo,"Yu Gothic",sans-serif;font-size:12pt;margin:24px}'+
-    'h1{font-size:18pt;margin:0 0 16px}table{border-collapse:collapse;width:100%;table-layout:auto}'+
-    'th,td{border:1px solid #9aa9bb;padding:9px 12px;font-size:12pt;text-align:left;vertical-align:middle}'+
-    'th{background:#e6f2ff;font-weight:bold;text-align:center}'+
-    'td:first-child,td:nth-child(3){text-align:center;white-space:nowrap}'+
-    '</style></head><body><h1>メンバー表</h1><table><thead><tr>'+rows[0].map(v=>'<th>'+esc(v)+'</th>').join('')+'</tr></thead><tbody>'+
-    rows.slice(1).map(row=>'<tr>'+row.map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>').join('')+
-    '</tbody></table></body></html>';
-  const blob=new Blob(['\ufeff',html],{type:'application/vnd.ms-excel;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='メンバー表.xls';a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+$('exportMembers').onclick=async()=>{
+  try{
+    if(!window.XLSX){
+      await new Promise((resolve,reject)=>{
+        const script=document.createElement('script');
+        script.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+        script.onload=resolve;script.onerror=()=>reject(new Error('Excel出力ライブラリを読み込めませんでした'));
+        document.head.appendChild(script);
+      });
+    }
+    const rows=[['メンバー表','','',''],['No.','氏名','出欠','アレルギー・連絡事項'],...state.members.map((m,i)=>[i+1,m.name,m.attendance,m.notes])];
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:3}}];
+    ws['!cols']=[{wch:8},{wch:24},{wch:12},{wch:42}];
+    ws['!rows']=[{hpt:28},{hpt:24}];
+    ws['!autofilter']={ref:'A2:D'+Math.max(2,rows.length)};
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'メンバー表');
+    XLSX.writeFile(wb,'メンバー表.xlsx');
+  }catch(err){
+    alert('Excelファイルを作成できませんでした。通信環境を確認して、もう一度お試しください。');
+    console.error(err);
+  }
 };
 $('exportAccounting').onclick=()=>exportCsv('会計簿.csv',[['日付','内容','区分','金額','支払った人','メモ'],...state.expenses.map(e=>[e.date,e.name,e.source==='shopping'?'買い出し':'手入力',e.amount,e.payer,e.note])]);
 $('exportBackup').onclick=()=>download('桐榮祭2026_運営管理バックアップ.json',JSON.stringify(state,null,2),'application/json;charset=utf-8');
