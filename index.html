@@ -530,37 +530,43 @@ function syncMembersToSheet(){
   const membersSnapshot=state.members.map(m=>({...m}));
   if(status)status.textContent=membersSnapshot.length+'人の名簿をGoogleスプレッドシートへ送信しています…';
   const body='payload='+encodeURIComponent(JSON.stringify({members:membersSnapshot}));
-  fetch(GOOGLE_SHEET_WEB_APP_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body})
+  let timedOut=false;
+  const request=fetch(GOOGLE_SHEET_WEB_APP_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body});
+  const timeout=new Promise((_,reject)=>setTimeout(()=>{timedOut=true;reject(new Error('timeout'))},15000));
+  Promise.race([request,timeout])
     .then(()=>{
       if(status)status.textContent='送信要求を送信しました。保存結果を確認しています…';
       setTimeout(()=>{
         readMembersFromSheet((data)=>{
           if(!data||data.success===false){
-            if(status)status.textContent='保存結果を確認できません。Apps Scriptの実行履歴を確認してください。';
+            if(status)status.textContent='保存結果を確認できません。Apps Scriptの公開設定・実行履歴を確認してください。';
           }else if(Array.isArray(data.members)&&data.members.length===membersSnapshot.length){
             if(status)status.textContent='スプレッドシートへの保存を確認しました（'+data.members.length+'人）。';
           }else{
             if(status)status.textContent='送信後もシートは'+(data.members||[]).length+'人です。Apps Scriptの実行履歴を確認してください。';
           }
         });
-      },2500);
+      },2000);
     })
-    .catch(()=>{if(status)status.textContent='送信に失敗しました。Apps Scriptの公開設定を確認してください。'})
+    .catch(()=>{
+      if(status)status.textContent=timedOut?'送信応答がありません。通信環境とApps Scriptの実行履歴を確認してください。':'送信に失敗しました。Apps Scriptの公開設定を確認してください。';
+    })
     .finally(()=>{sheetSyncBusy=false;});
 }
 function readMembersFromSheet(onResult){
   const callback='sheetSyncCallback_'+Date.now()+'_'+Math.random().toString(36).slice(2);
   const script=document.createElement('script');
   let finished=false;
-  const cleanup=()=>{if(finished)return;finished=true;delete window[callback];script.remove();};
-  const timeout=setTimeout(cleanup,12000);
+  const cleanup=()=>{if(finished)return;finished=true;clearTimeout(timeout);delete window[callback];script.remove();};
+  const finish=(data)=>{if(finished)return;cleanup();if(typeof onResult==='function')onResult(data)};
+  const timeout=setTimeout(()=>finish({success:false,error:'timeout'}),12000);
   window[callback]=(data)=>{
-    clearTimeout(timeout);cleanup();
+    finish(data);
     if(!data||data.success===false||!Array.isArray(data.members))return;
     // 空のシートでアプリ側の名簿を消さない
     if(!data.members.length)return;
     const mapped=data.members.map(m=>{
-      const existing=state.members.find(x=>x.id===m.id)||(state.members.find(x=>x.name===String(m.name||'')&&x.department===String(m.department||'')));
+      const existing=state.members.find(x=>x.id===m.id)||(state.members.find(x=>normalizeMemberName(x.name)===normalizeMemberName(m.name)));
       return {id:existing?.id||m.id||uid(),name:String(m.name||''),department:String(m.department||getDepartment(m.name)||''),attendance:String(m.attendance||'未定'),notes:String(m.notes||'')};
     });
     const incoming=JSON.stringify(mapped);
@@ -574,7 +580,7 @@ function readMembersFromSheet(onResult){
     const status=$('sheetSyncStatus');
     if(status)status.textContent='スプレッドシートの変更をアプリに反映しました。';
   };
-  script.onerror=()=>{clearTimeout(timeout);cleanup();};
+  script.onerror=()=>finish({success:false,error:'読み込み失敗'});
   script.src=GOOGLE_SHEET_WEB_APP_URL+'?callback='+encodeURIComponent(callback)+'&t='+Date.now();
   document.head.appendChild(script);
 }
