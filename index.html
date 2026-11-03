@@ -518,6 +518,40 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const GOOGLE_SHEET_WEB_APP_URL='https://script.google.com/a/macros/uni.mejiro.ac.jp/s/AKfycbw_HFjb_CzOvu_EpIZaGFxfvb9edKJBvI_co_GWRwrU-cfNV_ukofGVNByOa4sGRMdPpw/exec';
 const GOOGLE_SHEET_URL='https://docs.google.com/spreadsheets/d/1e1lmACXbVsKE2GPcLRfYxDNJkDRy2gLh/edit';
 let sheetSyncTimer=null,sheetPollTimer=null,sheetSyncBusy=false,sheetLastMembers='';
+
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){console.error('ローカル保存に失敗しました',e);}
+  render();
+  if(window.firebaseSync&&window.firebaseSync.ready)window.firebaseSync.save(state);
+  clearTimeout(sheetSyncTimer);
+  sheetSyncTimer=setTimeout(()=>{if(state.members.length)syncMembersToSheet();},900);
+}
+function load(){
+  try{
+    const raw=localStorage.getItem(KEY);
+    if(raw){
+      const stored=JSON.parse(raw);
+      if(stored&&typeof stored==='object'){
+        state={...state,...stored};
+        if(!Array.isArray(state.members))state.members=[];
+        if(!Array.isArray(state.timeline))state.timeline=[];
+        if(!Array.isArray(state.shopping))state.shopping=[];
+        if(!Array.isArray(state.expenses))state.expenses=[];
+      }
+    }
+  }catch(e){console.error('保存データの読み込みに失敗しました',e);}
+  render();
+}
+window.getLocalAppState=()=>state;
+window.applyCloudState=(value)=>{
+  if(!value||typeof value!=='object')return;
+  const incoming={...state,...value};
+  // 空のクラウド名簿で、端末に残っている登録済みメンバーを消さない
+  if(Array.isArray(value.members)&&value.members.length===0&&state.members.length>0)incoming.members=state.members;
+  state=incoming;
+  try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){console.error(e);}
+  render();
+};
 function syncMembersToSheet(){
   if(sheetSyncBusy)return;
   // 名簿が空の場合は、初期状態や他項目の編集による誤消去を防ぐため送信しない
