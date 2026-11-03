@@ -325,7 +325,7 @@ th,td{padding:12px}
 </nav>
 <section class="section active" id="members">
 <div class="panel"><h2>メンバーを手動追加</h2><form id="memberForm" class="row"><div class="field"><label>氏名 *</label><input id="memberName" required placeholder="例：桐榮 花子" autocomplete="off"></div><div class="field"><label>学科（氏名から自動判定）</label><select id="memberDepartment"><option value="">未判定・手動選択</option><option>理学</option><option>作業</option><option>言語</option><option>看護</option></select></div><div class="field"><label>出欠</label><select id="memberAttendance"><option>出席</option><option>欠席</option><option>未定</option></select></div><div class="field"><label>アレルギー・連絡事項</label><input id="memberNotes" placeholder="任意"></div><button class="primary">追加</button></form></div>
-<div class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">メンバー一覧</h2><button class="secondary small" id="exportMembers">メンバー表をExcelで書き出す</button></div><div class="toolbar"><div class="field"><label for="memberSearch">名前で検索</label><input id="memberSearch" type="search" placeholder="名前を入力して検索"></div><div class="field"><label for="memberFilter">出欠で絞り込み</label><select id="memberFilter"><option value="all">すべて表示</option><option value="出席">出席</option><option value="欠席">欠席</option><option value="未定">未定</option></select></div><span class="member-count" id="memberCountLabel">0人</span></div><p class="muted">氏名・出欠・連絡事項は一覧から直接編集できます。</p><div class="table-wrap"><table><thead><tr><th>#</th><th>氏名</th><th>学科</th><th>出欠</th><th>アレルギー・連絡事項</th><th>操作</th></tr></thead><tbody id="memberRows"></tbody></table></div><div id="memberEmpty" class="empty">まだメンバーがいません。上のフォームから直接追加してください。</div></div>
+<div class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">メンバー一覧</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary small" id="openMemberSheet">📊 スプレッドシートを開く</button><button class="secondary small" id="syncMemberSheet">☁️ 名簿を同期</button><button class="secondary small" id="exportMembers">メンバー表をExcelで書き出す</button></div></div><p id="sheetSyncStatus" class="muted" role="status">Googleスプレッドシート連携：準備完了</p><div class="toolbar"><div class="field"><label for="memberSearch">名前で検索</label><input id="memberSearch" type="search" placeholder="名前を入力して検索"></div><div class="field"><label for="memberFilter">出欠で絞り込み</label><select id="memberFilter"><option value="all">すべて表示</option><option value="出席">出席</option><option value="欠席">欠席</option><option value="未定">未定</option></select></div><span class="member-count" id="memberCountLabel">0人</span></div><p class="muted">氏名・出欠・連絡事項は一覧から直接編集できます。</p><div class="table-wrap"><table><thead><tr><th>#</th><th>氏名</th><th>学科</th><th>出欠</th><th>アレルギー・連絡事項</th><th>操作</th></tr></thead><tbody id="memberRows"></tbody></table></div><div id="memberEmpty" class="empty">まだメンバーがいません。上のフォームから直接追加してください。</div></div>
 </section>
 <section class="section" id="timeline">
 <div class="panel"><h2>当日のタイムライン</h2><p class="muted">当日の進行予定を時刻順に管理できます。開始時刻・終了時刻・内容・担当者・メモを登録してください。</p><form id="timelineForm" class="row">
@@ -515,7 +515,19 @@ const $=id=>document.getElementById(id);
 const yen=n=>'¥'+(Number(n)||0).toLocaleString('ja-JP');
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function save(){localStorage.setItem(KEY,JSON.stringify(state));render();if(window.firebaseSync&&window.firebaseSync.ready)window.firebaseSync.save(state)}
+const GOOGLE_SHEET_WEB_APP_URL='https://script.google.com/a/macros/uni.mejiro.ac.jp/s/AKfycbwB4zBxnD-Qms5pDri6pZLLmbV2mEpJqT0D7gTXDJMxBuDHX8FXKf0CGSKFAR9UU3_gig/exec';
+const GOOGLE_SHEET_URL='https://docs.google.com/spreadsheets/d/1e1lmACXbVsKE2GPcLRfYxDNJkDRy2gLh/edit';
+let sheetSyncTimer=null;
+function syncMembersToSheet(){
+  const status=$('sheetSyncStatus');
+  if(status)status.textContent='Googleスプレッドシートへ名簿を送信しています…';
+  const payload=JSON.stringify({members:state.members});
+  const body='payload='+encodeURIComponent(payload);
+  fetch(GOOGLE_SHEET_WEB_APP_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body})
+    .then(()=>{if(status)status.textContent='名簿の送信を行いました。反映はスプレッドシートで確認してください。'})
+    .catch(()=>{if(status)status.textContent='名簿の送信に失敗しました。Apps Scriptの公開設定とURLを確認してください。'});
+}
+function save(){localStorage.setItem(KEY,JSON.stringify(state));render();if(window.firebaseSync&&window.firebaseSync.ready)window.firebaseSync.save(state);clearTimeout(sheetSyncTimer);sheetSyncTimer=setTimeout(syncMembersToSheet,900)}
 function normalizeState(v){state={members:[],timeline:[],shopping:[],expenses:[],budget:40000,...(v&&typeof v==='object'?v:{})};if(!Array.isArray(state.members))state.members=[];if(!Array.isArray(state.timeline))state.timeline=[];if(!Array.isArray(state.shopping))state.shopping=[];if(!Array.isArray(state.expenses))state.expenses=[];state.members=state.members.map(m=>({id:m.id||uid(),name:m.name||'',department:m.department||getDepartment(m.name)||'',attendance:m.attendance||'未定',notes:m.notes||''}));state.shopping=state.shopping.map(x=>({...x,id:x.id||uid()}));state.expenses=state.expenses.map(e=>({...e,id:e.id||uid()}))}
 function load(){try{const v=JSON.parse(localStorage.getItem(KEY));if(v&&typeof v==='object')normalizeState(v)}catch(e){};render()}
 window.getLocalAppState=()=>state;
@@ -572,6 +584,8 @@ $('saveBudget').onclick=()=>{state.budget=Math.max(0,Number($('budgetInput').val
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.section').forEach(x=>x.classList.toggle('active',x.id===b.dataset.tab));document.querySelector('.stats').style.display=b.dataset.tab==='members'?'grid':'none'});
 function parseCsv(text){const rows=[];let row=[],cell='',q=false;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(c==='"'&&text[i+1]==='"'){cell+='"';i++}else if(c==='"')q=false;else cell+=c}else if(c==='"')q=true;else if(c===','){row.push(cell);cell=''}else if(c==='\n'){row.push(cell.replace(/\r$/,''));rows.push(row);row=[];cell=''}else cell+=c}if(cell.length||row.length){row.push(cell.replace(/\r$/,''));rows.push(row)}return rows.filter(r=>r.some(c=>c.trim()!=='')).map(r=>r.map(c=>c.trim().replace(/^\ufeff/,'')))}
 function findCol(headers,tests){return headers.findIndex(h=>tests.some(t=>t.test(h)))}
+$('openMemberSheet').onclick=()=>window.open(GOOGLE_SHEET_URL,'_blank','noopener');
+$('syncMemberSheet').onclick=syncMembersToSheet;
 $('exportMembers').onclick=async()=>{
   try{
     if(!window.XLSX){
