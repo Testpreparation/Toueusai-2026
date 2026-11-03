@@ -573,7 +573,7 @@ window.applyCloudState=(v)=>{normalizeState(v);localStorage.setItem(KEY,JSON.str
 function csvCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
 function download(name,content,type='text/csv;charset=utf-8'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff',content],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href)}
 function exportCsv(name,rows){download(name,rows.map(r=>r.map(csvCell).join(',')).join('\r\n'))}
-const DEPARTMENT_BY_NAME={'藤井夢果':'作業','半田咲妃':'作業','大木美華':'作業','友常麻優':'言語','栗原蓮香':'看護','中嶋美優':'看護','照井涼太':'作業','小池健介':'作業','中條結菜':'作業','吉澤星那':'作業','増田若菜':'看護','長岐柚依':'作業','西川知花':'看護','原彩華':'看護','衛藤悠汰':'作業','太田百香':'作業','出山裕輝':'作業','信坂花':'作業','荒井史名':'作業','山中美葵':'作業','大久保千智':'看護','飯島奈々恵':'作業','島崎芽香':'看護','神作陽菜':'看護','伏見新生':'理学','渡邉晴煌':'理学','有賀大輝':'看護'};
+const DEPARTMENT_BY_NAME={'藤井夢果':'作業','半田咲妃':'作業','大木美華':'作業','友常麻優':'言語','栗原夢香':'看護','中嶋美優':'看護','照井涼太':'作業','小池健介':'作業','中條結菜':'作業','吉澤星那':'作業','増田若菜':'看護','長岐柚依':'作業','西川知花':'看護','原彩華':'看護','衛藤悠汰':'作業','太田百香':'作業','出山裕輝':'作業','信坂花':'作業','荒井史名':'作業','山中美葵':'作業','大久保千智':'看護','飯島奈々恵':'作業','島崎芽香':'看護','神作陽菜':'看護','伏見新生':'理学','渡邊晴惺':'理学','有賀大輝':'看護'};
 function getDepartment(name){const key=String(name||'').normalize('NFKC').replace(/[\s　・･]/g,'').trim();return DEPARTMENT_BY_NAME[key]||''}
 function attendanceBadge(v){const s=String(v||'未定');return '<span class="badge '+(s.includes('欠')?'absent':s.includes('出席')?'done':'')+'">'+esc(s)+'</span>'}
 function getSpent(){return state.expenses.reduce((s,e)=>s+(Number(e.amount)||0),0)}
