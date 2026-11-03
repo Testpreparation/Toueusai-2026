@@ -210,6 +210,12 @@ th,td{padding:12px}
  #shoppingForm .field:first-child,#shoppingForm .field:nth-child(4),#shoppingForm .field:nth-child(5),#expenseForm .field:first-child,#expenseForm .field:nth-child(3),#expenseForm .field:nth-child(4),#expenseForm .field:nth-child(5){grid-column:1/-1}
  #importMembers{grid-column:1/-1}
  #saveBudget{grid-column:1/-1}
+  /* レシートの4項目を均等な2列に固定し、入力欄の重なりを防止 */
+  #accounting .row:has(#receiptName){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:12px}
+  #accounting .row:has(#receiptName)>.field{grid-column:auto;min-width:0;width:100%;flex:none}
+  #accounting .row:has(#receiptName)>.field input{display:block;width:100%;min-width:0;max-width:100%;height:54px;margin:0}
+  #accounting .row:has(#receiptName) #receiptDate{font-size:16px;padding:10px 8px}
+
  .toolbar{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
  .toolbar .field{min-width:0;width:100%}
  .member-count{padding:2px 0}
